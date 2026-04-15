@@ -279,6 +279,20 @@ let requestCount = 0;
 
 const server = http.createServer((req, res) => {
   requestCount++;
+  const reqStart = Date.now();
+
+  res.on('finish', () => {
+    const duration = Date.now() - reqStart;
+    console.log(JSON.stringify({
+      level: 'info',
+      method: req.method,
+      url: req.url,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+      requestCount,
+      timestamp: new Date().toISOString(),
+    }));
+  });
 
   if (req.url === '/api/info') {
     const mem = process.memoryUsage();
