@@ -214,6 +214,18 @@ const html = `<!DOCTYPE html>
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title">Custom Env Vars (from Dooor OS)</div>
+      <div class="row">
+        <span class="label">TESTE</span>
+        <span class="value" id="env-teste">-</span>
+      </div>
+      <div class="row">
+        <span class="label">TESTE2</span>
+        <span class="value" id="env-teste2">-</span>
+      </div>
+    </div>
+
     <div class="footer">
       Deployed with <a href="https://github.com/Dooor-AI/dooor-os">Dooor OS</a> &mdash; Open-source PaaS with AI governance
     </div>
@@ -249,6 +261,8 @@ const html = `<!DOCTYPE html>
       document.getElementById('port').textContent = data.port;
       document.getElementById('requests').textContent = data.requests;
       document.getElementById('latency').textContent = latency + 'ms';
+      document.getElementById('env-teste').textContent = data.teste;
+      document.getElementById('env-teste2').textContent = data.teste2;
     }
 
     setInterval(() => {
@@ -280,6 +294,8 @@ const server = http.createServer((req, res) => {
       port,
       requests: requestCount,
       cpus: os.cpus().length,
+      teste: process.env.TESTE || '(not set)',
+      teste2: process.env.TESTE2 || '(not set)',
     }));
   }
 
