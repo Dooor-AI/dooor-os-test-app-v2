@@ -1,8 +1,12 @@
 {
   "name": "dooor-os-test-app",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Test application for Dooor OS deploy pipeline",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
