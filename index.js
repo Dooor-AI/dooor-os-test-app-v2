@@ -16,7 +16,7 @@ const startedAt = new Date().toISOString();
 // GEMINI_API_KEY must be set by the user in Dooor OS → App → Env Vars.
 // Without it, the AI card just shows a friendly notice — app stays useful.
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-3-flash-preview';
 const geminiKey = process.env.GEMINI_API_KEY || '';
 
 let llm = null;
