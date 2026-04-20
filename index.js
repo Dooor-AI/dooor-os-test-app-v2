@@ -1,9 +1,52 @@
 const http = require('http');
 const os = require('os');
 const { Pool } = require('pg');
+const { createAutoLlm, getAutoLlmInfo } = require('@dooor-ai/toolkit/auto');
+const { ChatGoogleGenerativeAI } = require('@langchain/google-genai');
 
 const port = process.env.PORT || 3000;
 const startedAt = new Date().toISOString();
+
+// ─── Harbor AI (auto-configured by Dooor OS) ───────────────────────────
+// Dooor OS injects CORTEXDB_CONNECTION + HARBOR_PROJECT into the Pod via
+// HarborDeployListener. The toolkit's `createAutoLlm` reads them, fetches
+// guards/evals from `GET /databases/{db}/observability-config` once at
+// boot, and wraps the LangChain provider with `dooorChatGuard`.
+//
+// GEMINI_API_KEY must be set by the user in Dooor OS → App → Env Vars.
+// Without it, the AI card just shows a friendly notice — app stays useful.
+
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const geminiKey = process.env.GEMINI_API_KEY || '';
+
+let llm = null;
+let llmInfo = null;
+let llmError = null;
+let aiCallCount = 0;
+
+async function initLlm() {
+  if (!geminiKey) {
+    llmError = 'GEMINI_API_KEY is not set';
+    return;
+  }
+  if (!process.env.CORTEXDB_CONNECTION) {
+    llmError = 'CORTEXDB_CONNECTION is not set (deploy via Dooor OS to auto-inject)';
+    return;
+  }
+  try {
+    const provider = new ChatGoogleGenerativeAI({
+      model: GEMINI_MODEL,
+      apiKey: geminiKey,
+      temperature: 0,
+    });
+    llm = await createAutoLlm(provider);
+    llmInfo = getAutoLlmInfo(llm);
+    console.log('Harbor auto-LLM ready:', llmInfo);
+  } catch (err) {
+    llmError = err.message;
+    console.error('Harbor auto-LLM init failed:', err.message);
+  }
+}
 
 // ─── Database ──────────────────────────────────────────────────────────
 // DATABASE_URL is the connection string for the managed Postgres
@@ -359,6 +402,47 @@ const html = `<!DOCTYPE html>
     </div>
 
     <div class="card">
+      <div class="card-title">
+        <span>Harbor AI</span>
+        <span id="ai-status" class="status-badge"><span class="status-dot"></span>checking…</span>
+      </div>
+
+      <div class="form-row">
+        <input id="ai-input" class="input" placeholder="Ask the LLM something…" maxlength="1000" />
+        <button id="ai-btn" class="button">Send</button>
+      </div>
+
+      <div id="ai-error" class="error-box" style="display:none;"></div>
+
+      <div id="ai-output" class="empty">No call yet. Type a prompt and hit Send.</div>
+
+      <div class="row" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #262626;">
+        <span class="label">Project (App ID)</span>
+        <span class="value" id="ai-project">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Config source</span>
+        <span class="value" id="ai-config-source">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Active guards</span>
+        <span class="value" id="ai-guards">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Active evals</span>
+        <span class="value" id="ai-evals">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Last latency</span>
+        <span class="value" id="ai-latency">-</span>
+      </div>
+      <div class="row">
+        <span class="label">AI calls</span>
+        <span class="value" id="ai-calls">0</span>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Runtime Info</div>
       <div class="row">
         <span class="label">Status</span>
@@ -452,7 +536,78 @@ const html = `<!DOCTYPE html>
         dbBadge.className = 'status-badge error';
         dbBadge.innerHTML = '<span class="status-dot"></span>' + (data.db.error || 'not connected');
       }
+
+      const aiBadge = document.getElementById('ai-status');
+      const ai = data.ai || {};
+      if (ai.ready) {
+        aiBadge.className = 'status-badge';
+        aiBadge.innerHTML = '<span class="status-dot"></span>' + ai.model + ' · harbor on';
+      } else {
+        aiBadge.className = 'status-badge error';
+        aiBadge.innerHTML = '<span class="status-dot"></span>' + (ai.error || 'not configured');
+      }
+      const info = ai.info || {};
+      document.getElementById('ai-project').textContent = info.project || '-';
+      document.getElementById('ai-config-source').textContent =
+        info.configSource ? (info.configError ? info.configSource + ' (err)' : info.configSource) : '-';
+      document.getElementById('ai-guards').textContent =
+        Array.isArray(info.guards) && info.guards.length ? info.guards.join(', ') : 'none';
+      document.getElementById('ai-evals').textContent =
+        Array.isArray(info.evals) && info.evals.length ? info.evals.join(', ') : 'none';
+      document.getElementById('ai-calls').textContent = ai.calls || 0;
     }
+
+    async function callAi() {
+      const errBox = document.getElementById('ai-error');
+      const out = document.getElementById('ai-output');
+      const btn = document.getElementById('ai-btn');
+      const input = document.getElementById('ai-input');
+      const prompt = input.value.trim();
+
+      errBox.style.display = 'none';
+      if (!prompt) {
+        errBox.textContent = 'Type a prompt first.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Calling…';
+      out.className = 'empty';
+      out.textContent = 'Waiting for the LLM…';
+
+      try {
+        const res = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          if (body.blockedByGuard) {
+            throw new Error('Blocked by guard ' + body.guardName + ': ' + body.error);
+          }
+          throw new Error(body.error || 'AI call failed');
+        }
+        out.className = 'item-content';
+        out.textContent = body.output;
+        document.getElementById('ai-latency').textContent = body.latencyMs + 'ms';
+        fetchInfo();
+      } catch (err) {
+        out.className = 'empty';
+        out.textContent = '';
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    }
+
+    document.getElementById('ai-btn').addEventListener('click', callAi);
+    document.getElementById('ai-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') callAi();
+    });
 
     function renderItems(items) {
       const wrap = document.getElementById('items-list');
@@ -573,7 +728,57 @@ const server = http.createServer(async (req, res) => {
         requests: requestCount,
         cpus: os.cpus().length,
         db: { ready: dbReady, error: dbError },
+        ai: {
+          ready: Boolean(llm),
+          model: GEMINI_MODEL,
+          calls: aiCallCount,
+          error: llmError,
+          info: llmInfo,
+        },
       }));
+    }
+
+    if (req.url === '/api/ai' && req.method === 'POST') {
+      if (!llm) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: llmError || 'LLM not ready' }));
+      }
+      const body = await readJsonBody(req);
+      const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+      if (!prompt) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'prompt is required' }));
+      }
+      if (prompt.length > 1000) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'prompt is too long (max 1000 chars)' }));
+      }
+
+      const startedCallAt = Date.now();
+      try {
+        const response = await llm.invoke(prompt);
+        const output =
+          typeof response === 'string'
+            ? response
+            : response?.content ?? String(response);
+        aiCallCount++;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          output,
+          model: GEMINI_MODEL,
+          latencyMs: Date.now() - startedCallAt,
+          info: llmInfo,
+        }));
+      } catch (err) {
+        const blocked = err?.name === 'GuardBlockedException';
+        console.error('LLM call failed:', err);
+        res.writeHead(blocked ? 403 : 502, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          error: err.message || 'LLM call failed',
+          blockedByGuard: blocked,
+          guardName: blocked ? err.guardName : undefined,
+        }));
+      }
     }
 
     if (req.url === '/api/items' && req.method === 'GET') {
@@ -629,4 +834,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, '0.0.0.0', () => {
   console.log(`Dooor OS Test App running on port ${port}`);
   initDatabase();
+  initLlm();
 });

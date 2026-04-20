@@ -1,7 +1,7 @@
 {
   "name": "dooor-os-test-app",
-  "version": "2.1.0",
-  "description": "Test application for Dooor OS deploy pipeline",
+  "version": "2.2.0",
+  "description": "Test application for Dooor OS deploy pipeline (Postgres + Harbor AI)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -10,6 +10,9 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@dooor-ai/toolkit": "^0.1.62",
+    "@langchain/core": "^1.1.40",
+    "@langchain/google-genai": "^2.1.27",
     "pg": "^8.13.1"
   }
 }
