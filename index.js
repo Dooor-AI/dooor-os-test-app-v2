@@ -409,7 +409,7 @@ const html = `<!DOCTYPE html>
 
       <div class="form-row">
         <input id="ai-input" class="input" placeholder="Ask the LLM something…" maxlength="1000" />
-        <button id="ai-btn" class="button">Send</button>
+        <button id="ai-btn" class="button">Send AUTO DEPLOY</button>
       </div>
 
       <div id="ai-error" class="error-box" style="display:none;"></div>
