@@ -13,7 +13,7 @@ const startedAt = new Date().toISOString();
 // guards/evals from `GET /databases/{db}/observability-config` once at
 // boot, and wraps the LangChain provider with `dooorChatGuard`.
 //
-// GEMINI_API_KEY must be set by the user in Dooor OS → App → Env Vars.
+// GEMINI_API_KEY must be set by the user in Dooor OS → App → Env Vars...
 // Without it, the AI card just shows a friendly notice — app stays useful.
 
 const GEMINI_MODEL = 'gemini-3-flash-preview';
