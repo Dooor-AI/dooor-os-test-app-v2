@@ -385,7 +385,7 @@ const html = `<!DOCTYPE html>
 
       <div class="form-row">
         <input id="item-input" class="input" placeholder="New item content…" maxlength="280" />
-        <button id="add-btn" class="button">Add</button>
+        <button id="add-btn" class="button">Add AUTODEPLOY</button>
       </div>
 
       <div class="form-row">
