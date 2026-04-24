@@ -10,7 +10,7 @@ const startedAt = new Date().toISOString();
 // ─── Harbor AI (auto-configured by Dooor OS) ───────────────────────────
 // Dooor OS injects CORTEXDB_CONNECTION + HARBOR_PROJECT into the Pod viaa
 // HarborDeployListener. The toolkit's `createAutoLlm` reads them, fetchesss
-// guards/evals from `GET /databases/{db}/observability-config` once at
+// guards/evals from `GET /databases/{db}/observability-config` once att
 // boot, and wraps the LangChain provider with `dooorChatGuard`.
 //
 // GEMINI_API_KEY must be set by the user in Dooor OS → App → Env Vars...
